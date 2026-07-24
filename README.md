@@ -47,16 +47,19 @@
 
 ```
 seriallink-showcase/
-├── README.md               # ← 지금 이 파일
-├── LICENSE                 # MIT
-├── blog-post.md            # 블로그 원고 (전 과정 서사 · 14장 · 약 1200 lines)
+├── README.md                # ← 지금 이 파일
+├── LICENSE                  # MIT
+├── blog-post.md             # 블로그 원고 (전 과정 서사 · 14장 · 약 1200 lines)
 ├── docs/
-│   ├── architecture.md     # 시스템 전체 아키텍처
-│   ├── verification.md     # KS X 3267 전수 검증 방법론·결과
-│   ├── discovery.md        # 사설 확장 §5.1 — per-port GPIO + 3-tier addr fallback
-│   └── vendor-spec.md      # KS X 3286 자동등록 노드 통합
+│   ├── architecture.md      # 시스템 전체 아키텍처
+│   ├── verification.md      # KS X 3267 전수 검증 방법론·결과·비적합 4건
+│   ├── discovery.md         # 사설 확장 §5.1 — per-port GPIO + 3-tier addr fallback
+│   ├── vendor-spec.md       # KS X 3286 자동등록 노드 통합
+│   ├── operations.md        # 검증 이후 운영 편의성 (async purge · sensor prune · addr · alias)
+│   ├── stack-decisions.md   # ADR (스택 선택 근거 — Rust/Timescale/SvelteKit/LVGL 등)
+│   └── mqtt-topics.md       # MQTT topic 스키마 + payload 예시 + backend ingest 흐름
 └── firmware/
-    └── README.md           # 펌웨어 컴포넌트 요약 (master/slave/p4)
+    └── README.md            # 펌웨어 컴포넌트 요약 (master/slave/p4)
 ```
 
 ---
@@ -73,6 +76,9 @@ seriallink-showcase/
 | KS X 3267 준수 어떻게 검증했나 | [docs/verification.md](docs/verification.md) |
 | 슬레이브 자동 배정 (사설 확장) | [docs/discovery.md](docs/discovery.md) |
 | KS X 3286 vendor 노드 통합 | [docs/vendor-spec.md](docs/vendor-spec.md) |
+| 검증 이후 운영 편의성 UI | [docs/operations.md](docs/operations.md) |
+| 스택 선택 근거 (ADR) | [docs/stack-decisions.md](docs/stack-decisions.md) |
+| MQTT topic 스키마·payload | [docs/mqtt-topics.md](docs/mqtt-topics.md) |
 | 펌웨어 컴포넌트 구조 · 빌드 | [firmware/README.md](firmware/README.md) |
 
 ---
