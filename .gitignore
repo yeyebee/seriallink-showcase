@@ -1,0 +1,10 @@
+# showcase 저장소 — 문서·설계 스냅샷만 담김. 개발용 파일 배제.
+.DS_Store
+*.log
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+.env
+.env.local
