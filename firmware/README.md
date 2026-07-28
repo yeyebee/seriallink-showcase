@@ -54,6 +54,21 @@ UI CH 번호 로 자동 매핑.
 
 상세: [`../docs/vendor-spec.md`](../docs/vendor-spec.md)
 
+## Actuator downstream — 외부 NPN modbus relay module (R421 계열)
+
+Actuator slave (`slave-c3-act/`) 는 KS X 3267 채널 상태를 실 relay 로 out 하기 위해 **downstream Modbus master** 로 외부 NPN relay module 을 write. 두 축 완전 분리:
+
+| 축 | 프로토콜 | 성격 |
+|---|---|---|
+| Master ↔ Slave (upstream) | **KS X 3267 표준 준수** — default map (cmd reg 503+i*4, status reg 203+i*4), 회사코드=0 | 표준 그대로. 외부 표준 마스터/시험소도 호환. |
+| Slave → NPN relay module (downstream) | **R421 계열 관례 하드코딩** — FC=06, reg=ch(1-based), value 0x0100 ON / 0x0200 OFF | 완제품 내부 취급. 다른 브랜드 NPN 이면 재작성. |
+
+**활성 조건**: `CONFIG_KSNODE_TYPE_ACTUATOR=y` + `CONFIG_KSNODE_EXT_MASTER_ENABLE=y` + `CONFIG_KSNODE_NPN_RELAY_ADDR=<addr>`. RS485-2 (g4/5/6) 로 NPN A/B 결선.
+
+**Hook**: `ks_actuator_node.c` 상 채널 state 변경 2곳 (새 cmd + TIMED 종료) 에서 `ext_master_write_single(addr, ch, value)` 호출. NPN 응답 로그: `→ NPN addr=1 reg=0x0004 val=0x0100 (ON): ESP_OK`.
+
+**다른 모델 대응**: FC/register/value 매핑 모델별로 다름 (일부는 FC=05 coil, ON=0xFF00). hook 부분만 재작성. Kconfig `KSNODE_NPN_MODEL` 로 select 옵션 확장 여지.
+
 ## slave-c3-sensor 의 sensor kind 분리
 
 한 firmware 소스로 여러 종의 센서 slave (CO2 / EC / soil / dummy / vendor) 를 다루기 위해 **kind 별 `sdkconfig.defaults.<kind>` 파일 + Kconfig choice group 강제** 방식 사용.
