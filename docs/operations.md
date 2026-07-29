@@ -392,20 +392,34 @@ $: metricOpts = $sensorState.get(selDev.device_id)?.sensors
 - Rule 작성 = device 처음 붙이는 순간에 자주 함 → snap 이 오히려 더 fresh
 - 이미 `actuatorState` snap-driven pattern 이 성숙 — 대칭성 확보
 
-## §6. HMI 차트 웹 트리거 (demo / real 스위칭)
+## §6. HMI 차트 웹 트리거 + 로컬 미리보기 (demo/real 스위칭 + metric 자유)
 
-Controller uplink 는 이미 `chart_demo` (720 점 dummy) 와 `chart_real`
-(TimescaleDB `sensor_data_v2` fetch) MQTT cmd 를 지원한다.  하지만 web
-대시보드에서 발행 수단이 없어 실무에서 `mosquitto_pub` 를 손으로 쳤다.
+Controller uplink 는 이미 `chart_demo` (dummy) 와 `chart_real` (TimescaleDB
+`sensor_data_v2` fetch) MQTT cmd 를 지원한다.  1차 접근은 dashboard 우측
+사이드 카드에서 트리거 발행만 했으나:
 
-대시보드 side col 에 `HmiChartCard` 를 추가해 라디오 (demo / real) +
-device select (sensor 노드만 필터) + hours/bucket 입력 + 트리거 버튼.
-`publishMqtt(topic, payload)` (기존 endpoint 재사용) 로 발행.
+1. `chart_real` firmware 상 metric 4종 hardcoded (`temperature/humidity/co2/
+   soil_humidity`) — backend `ks_devcode_to_metric` 상 `soil_moisture` 매핑이
+   라 typo → 실 sensor 4번째 series 는 항상 empty.
+2. `chart_demo` 도 4종 sine/cos 하드코딩 — 성능 시험 시 metric 조합 자유도
+   없음.
+3. HMI 화면만 렌더링 — 원격 대시보드에서 같은 차트를 못 봄.
 
-**한계**: controller 상 `chart_real` 은 metric 4 종 (temperature / humidity
-/ co2 / soil_humidity) hardcoded.  웹에서 metric 스위칭까지 하려면 firmware
-`chart_real` payload 에 `metrics: []` 필드 추가 + `k_real_metric_names`
-runtime override 필요.  UI 상 후속 명시.
+**3-layer 재구성** (`/charts` 페이지로 이동, dashboard side 에서 제거):
+
+- **Firmware master `link_p4.c`** — `metric_bound_t + k_metric_bounds` 19종
+  (§A.1.2 sensor devcode 전수) + `lookup_metric` 도입.  chart_demo/chart_real
+  둘 다 `chart_*_cfg_t` 구조체 + payload `metrics` csv override 지원.  max 8
+  series (`CHART_REAL_MAX_SERIES`).  demo 파형은 `demo_value_for_metric`
+  (metric key 문자합 phase + range 안 daily/weekly sine) 로 재작성 → 각 series
+  겹치지 않는 dummy 신호.  HTTP buf 32→64 KiB.
+- **Frontend `HmiChartCard`** — Real 은 device 선택만 (metric 은 sensorState
+  snap 상 devcode 로 자동 도출, 선택 UI 없음).  Demo 는 metric multi-select
+  + points.  로컬 uPlot 인스턴스로 그대로 렌더 (Real=backend fetch, Demo=JS
+  로 firmware 동일 알고리즘 재현) + 별개 "HMI 로 전송" 버튼 (`publishMqtt`).
+- **정합성**: firmware `demo_value_for_metric` 과 frontend `demoValue` 는
+  같은 알고리즘 (phase = metric key 문자합 × 0.13, ymin/ymax 중앙 ± 25% 진폭)
+  으로 재구현.  대시보드 미리보기가 HMI 상 그리는 파형과 동일 signal.
 
 ## 마무리
 
