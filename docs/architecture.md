@@ -332,6 +332,30 @@ subfield alloc 실패 시 이미 만든 obj destroy + memset rollback (좀비 �
 
 즉 회사코드=0 표준 slave 를 우리 마스터에 붙이면 값 스케일링 (IEEE-754 f32 word-LE) / SW/OC 카드 자동 생성 / 라벨·단위·status 정상 표기가 자동으로 완료된다.
 
+#### 4.4.4 물리 스위치 vs HMI (표준 옵션)
+
+KS X 3267 §6.1.4.1 CONTROL 은 **mode 존재만 요구** (LOCAL/REMOTE/MANUAL). 물리 스위치 자체는 강제 X.  심사는 `mb_write reg=501 values=[<code>, opid]` → 노드가 status 를 SW_USER_CONTROL(299) / MANUAL_CONTROL(399) 로 override 하는지만 검증.
+
+**실용 관점**: 기존 물리 스위치의 3가지 가치를 우리 상황에 대입:
+
+| 가치 | 우리 상황 |
+|---|---|
+| 통신 장애 fallback | ⚠ 불필요 — HMI 가 HMI 로컬 카드 UI.  네트워크/backend 다운돼도 HMI ↔ master ↔ slave UART/RS485 로 그대로 조작 |
+| 긴급 정지 | ⚠ 낮음 — HMI 화면 조작 반응 시간 = 물리 버튼과 큰 차이 X |
+| 심사 MANUAL 시연 | 🟨 모호 — verify widget 로 `mode=3` 발행 시뮬레이션 대체 가능 |
+
+**결론**: 심사 지침이 "물리 조작 시연" 을 명시 요구하지 않으면 skip. 명시 시엔 slave 노드에 e-stop 급 물리 버튼 1개 정도 추가 (표준상 slave 위치).  현재 구성은 논리 mode 지원만으로 §6.1.4.1 충족.
+
+#### 4.4.5 OC (개폐형) 완료 신호 없는 slave 의 default hold
+
+Simple `KS_OP_OP_OPEN(301) / CLOSE(302)` 는 표준 §B.3 상 "위치 도달 = READY 전환" 이지만, 우리 NPN downstream 은 SW 채널만 매핑 (16 relay), OC 채널 (idx 17~24) 은 물리 hw 없음 → 완료 신호도 없음 → HMI 상 CLOSING/OPENING 무한 지속.
+
+Fix: `KSNODE_OC_DEFAULT_HOLD_SEC` Kconfig (default 3 s, range 1~60).  Simple OPEN/CLOSE 발행 시 remain 을 이 값으로 세팅 → tick 카운트다운 후 자동 READY.  TIMED_OPEN/CLOSE (303/304) 는 arg 그대로, SET_CONFIG (306) 는 미구현 (fallback 없이 default 사용).
+
+#### 4.4.6 HMI 카드 스크롤 방지
+
+LVGL v9 default 는 모든 컨테이너 `SCROLLABLE=ON`.  카드 dense grid 상 label 폭이 card 폭 초과 시 자동 좌우 스크롤 발생.  `build_card` 상 card + val_row + btn_row 에 `LV_OBJ_FLAG_SCROLLABLE` 제거 로 방지.
+
 ### 4.5 Rust backend (axum)
 
 Docker container 하나로 통합된 백엔드. host network 로 동작합니다.
