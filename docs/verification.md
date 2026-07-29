@@ -197,12 +197,14 @@ ack ok=false err="crc" errno=3 ...    # ack payload 있을 때만
 
 | 항목 | 값 |
 |---|---|
-| 레지스터 | 501=노드 명령, 502=OPID#0 (부속서 A.2.4, p.37). operation 코드 CONTROL=2 (부속서 B.3, p.43) |
-| 요청 | `mb_write reg=501 values=[2, opid]` |
+| 레지스터 | 501=노드 명령 (값 = KS_CTRL_LOCAL(1) / REMOTE(2) / MANUAL(3)), 502=OPID#0 (부속서 A.2.4, p.37) |
+| 요청 (모드 전환) | `mb_write reg=501 values=[<code>, opid]` |
 | 대기 | 200ms |
-| status | `mb_read reg=201 count=1` (OPID#0 echo 확인) |
-| PASS | write ok + status read ok + `regs[0] == opid` |
-| 결과 | **PASS** — 송신 opid 가 노드 상태영역 OPID#0에 그대로 반영됨 |
+| status | `mb_read reg=201 count=1` (OPID#0 echo) + 이후 채널 status 관찰 |
+| PASS 조건 | (a) write ok + OPID echo, (b) LOCAL/MANUAL 전환 후 SW cmd → 채널 status = `SW_USER_CONTROL(299)`, OC cmd → `MANUAL_CONTROL(399)`, (c) REMOTE 복귀 후 SW/OC cmd 정상 처리 |
+| 결과 | **PASS** — opid echo + 채널 status override 전수 대조 완료 |
+
+**구현 노트 (2026-07)**: 초기엔 opid echo 만 지원 (CONTROL code 값 무시) → LOCAL/MANUAL 모드에서도 원격 SW/OC cmd 정상 처리 = 표준 §6.1.4.1 위반이었으나 발견되지 않았음 (자체 verify widget 도 opid echo 만 검사).  slave 상 `s_control_code` 상태 저장 + 채널 처리 루프 상 mode 반영 (REMOTE 아니면 status override + NPN write skip) 로 수정.
 
 ### 4.2 센서 계열 (§6.2)
 

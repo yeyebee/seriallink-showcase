@@ -295,6 +295,26 @@ vApplicationStackOverflowHook` 로 5 분 만에 원인 확정 → stack 6 KiB �
 subfield alloc 실패 시 이미 만든 obj destroy + memset rollback (좀비 카드
 청소).
 
+#### 4.4.2 표준 준수 강화 (2026-07 심사 대비 감사 8건)
+
+파이프라인 리팩터 후 KS X 3267 심사 관점 gap 감사에서 8건 발견·수정:
+
+| # | 심각도 | 항목 | fix |
+|---|---|---|---|
+| F-1 | CRITICAL | Master snapshot JSON buffer 트루케이션 → 24ch 노드 후반 채널 (SW#13~16, OC#5~8) 이 HMI UI 카드 자체 미노출 (header 130B + entry 60B × ch, 768B 로는 10~12ch 만 담김) | buffer 768 → 2048 B 확대 (HMI 파서 라인 상한 2400 B 이미 수용) |
+| F-2 | CRITICAL | Slave CONTROL(§6.1.4.1) 처리 불완전 — code 값 (LOCAL/REMOTE/MANUAL) 무시하고 OPID 만 echo → LOCAL 모드에서도 원격 SW 처리 = 표준 위반 | `s_control_code` 상태 저장 + 채널 status override (SW→299, OC→399) + NPN write skip |
+| F-3 | MEDIUM | 외부 NPN relay downstream 실패 시 slave 는 status = SW_ON 유지 → 상태 거짓 반영 (UI "ON" 인데 실 relay OFF) | 실패 시 status = 900 (VENDOR_MIN, "NPN_UNREACHABLE") + node_status = ERROR |
+| F-4 | MEDIUM | MQTT `mb_write` handler 는 sync + kick 미호출 → verify widget 이 status 반영을 5 s poll 까지 대기 → flakiness | mb_write/mb_write1 성공 시 50 ms delay + `poller_kick_one` (HMI 경로와 반영 latency 동조) |
+| F-5 | MEDIUM | HMI 카드 UI 로 발행 가능 op = 4종 (SW_OFF/ON, OC_OPEN/CLOSE) 만.  TIMED / DIRECTIONAL / SET_POSITION / SET_CONFIG UI 부재 | 나머지 op 코드는 verify widget → backend MQTT `mb_write` 로 전수 검증 (문서 명시) |
+| F-6 | MEDIUM | Master cmd_queue depth 32 silent drop → 심사 rapid burst (24ch × 2 = 48 cmd) 초과분 drop, HMI optimistic UI 는 "발행됨" 표시 → 실 wire 미전송 = status 불일치 | depth 128 + full 시 200 ms blocking backpressure (drop 대신) |
+| F-7 | MINOR | `status_for_op` 미지원 op → KS_STS_READY 조용히 회귀. 심사원 이상값(op=999) 테스트 시 판독 곤란 | `default: KS_STS_ERROR` (§B.2) |
+| F-8 | MINOR | Discovery sentinel reg 250 이 sensor 디폴트 맵 상 ch17 value LO 위치임을 문서 명시 | 검증 보고서 §4.1 에 "ephemeral discovery 모드 전용, fixed addr 모드에선 표준대로 사용" 명시 |
+
+**감사 접근**: 우리 자체 verify widget (opid echo 만 검사) 이 놓치는 gap 을
+심사원 관점 (LOCAL 모드 SW cmd 응답, 24ch 조작 시연, NPN 물리 실패 등) 으로
+재감사.  가장 중요한 F-2 는 "자체 PASS 였지만 표준 위반" 사례 — verify
+로직 자체의 한계를 문서화해 두는 게 재발 방지.
+
 ### 4.5 Rust backend (axum)
 
 Docker container 하나로 통합된 백엔드. host network 로 동작합니다.
