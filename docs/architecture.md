@@ -315,6 +315,23 @@ subfield alloc 실패 시 이미 만든 obj destroy + memset rollback (좀비 �
 재감사.  가장 중요한 F-2 는 "자체 PASS 였지만 표준 위반" 사례 — verify
 로직 자체의 한계를 문서화해 두는 게 재발 방지.
 
+#### 4.4.3 외부 표준 slave 자동 호환 (bi-directional interop)
+
+우리 스택은 **두 방향 호환** 을 목표로 한다:
+- 우리 sensor slave → 외부 표준 마스터에 연결
+- 외부 표준 slave → 우리 마스터에 연결 (자동 UI 대응)
+
+두 번째 방향의 자동 대응 범위를 감사·강화한 결과:
+
+| 항목 | 이전 | 강화 후 |
+|---|---|---|
+| Sensor devcode 라벨/단위 | 19종 중 10종만 (온도/습도/이슬점/유량/일사/CO2/EC/토양수분/pH/지온) | **§A.1.2 19종 전수** (감우/강우량/풍속/풍향/전압/광양자/토양장력/무게/누적유량 추가) + 양액기 (§A.2.8) |
+| Status 코드 표기 | 4종 (READY/ON/OPENING/CLOSING) 만, 나머지는 `st=N` raw | **§B.1~B.5 전수** — ERROR/BUSY/V_ERR/I_ERR/T_ERR/FUSE_ERR/REPLACE/CALIB/CHECK/TIMED_ON/USER_CTRL/MANUAL/PREPARE/SUPPLY/STOP + vendor 900~999 |
+| Registry scan 상한 | hardcode addr 1~16 | Kconfig `SFC_REGISTRY_SCAN_MAX` 노출 (default 16, range 1~247). 표준 시험 시 상한 addr 검증 대응 |
+| 회사코드=0 default map slave | 자동 대응 (registry probe → devcode 매핑 → UI 카드 자동 생성) | 그대로. 회사코드 non-zero (vendor) + KS X 3286 spec 미제공은 스코프 밖 (§6.5) |
+
+즉 회사코드=0 표준 slave 를 우리 마스터에 붙이면 값 스케일링 (IEEE-754 f32 word-LE) / SW/OC 카드 자동 생성 / 라벨·단위·status 정상 표기가 자동으로 완료된다.
+
 ### 4.5 Rust backend (axum)
 
 Docker container 하나로 통합된 백엔드. host network 로 동작합니다.
