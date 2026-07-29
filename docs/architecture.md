@@ -360,6 +360,16 @@ LVGL v9 default 는 모든 컨테이너 `SCROLLABLE=ON`.  카드 dense grid 상 
 
 SW 카드 조작을 카드 자체 click 으로 통합 — 기존 `ON/OFF` 두 버튼 → 카드 자체가 toggle button (`last_status == SW_ON` 이면 OFF 발행, 그 외 ON 발행).  OC 카드는 반복 OPEN/CLOSE (진행 중 재발행) 시나리오 지원 위해 기존 `OPEN/CLOSE` 두 버튼 유지.  optimistic UI (pending window + 즉시 색 반전) 는 두 경로 공통.
 
+#### 4.4.8 HMI landscape rotation + 우측 사이드바 탭
+
+HMI 를 가로형 (rotation=1, 물리 800×1280 → 논리 1280×800) 으로 전환하고 우측 사이드바 탭 (모니터링 / 제어) 로 재구성.  단계별 flash 검증:
+
+- rotation=1 flip (LVGL v9 PPA 하드웨어 가속 SW rotation).  주의: LVGL task stack 은 7168→12288 확장 필요 (PPA 콜스택이 크게 소모, `Stack protection fault` 실측 후 fix).
+- 상단 공통 헤더 (탭 무관): 로고 + Smart Farm + controller ID + 노드 meta + heartbeat (uptime/heap) + 시각 (T+HH:MM:SS, SNTP 미연결 시 uptime placeholder) + 터치 디버그 + NET 버튼.
+- 모니터링 탭: 센서 zone (위) + 차트 zone (가운데) + 알림 placeholder (하단 fixed 80px).  좌우 분할 실험 후 세로 스택이 UX 상 나음 (좌우 분할 시 build_zone 상 `lv_pct(100)` width 세팅과 grid layout 간 순환 참조로 카드 납작 문제).
+- 제어 탭: 구동기 zone (기존 SW/OC grid).
+- 탭 스위칭: `LV_OBJ_FLAG_HIDDEN` 토글만 (obj destroy 없음).
+
 ### 4.5 Rust backend (axum)
 
 Docker container 하나로 통합된 백엔드. host network 로 동작합니다.

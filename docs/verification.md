@@ -206,6 +206,12 @@ ack ok=false err="crc" errno=3 ...    # ack payload 있을 때만
 
 **구현 노트 (2026-07)**: 초기엔 opid echo 만 지원 (CONTROL code 값 무시) → LOCAL/MANUAL 모드에서도 원격 SW/OC cmd 정상 처리 = 표준 §6.1.4.1 위반이었으나 발견되지 않았음 (자체 verify widget 도 opid echo 만 검사).  slave 상 `s_control_code` 상태 저장 + 채널 처리 루프 상 mode 반영 (REMOTE 아니면 status override + NPN write skip) 로 수정.
 
+**검증 항목 확장 (2026-07)**: 감사 결과 자체 verify widget 이 놓치는 gap 이 있어 3건 추가:
+
+- **N-4 노드 상태 조회 레벨1 (§6.1.3.2)**: stub — 현 slave 는 레벨0 만 구현 (`reg 202` status 1W). status+opid+control 3W 는 미제공 → N/A 반환하여 심사원이 이 gap 을 인지하도록.
+- **N-5b CONTROL LOCAL 모드 status override**: 기존 N-5 는 opid echo 만 확인 → CONTROL code 값을 무시하는 slave 도 무의미 PASS 발생. N-5b 는 `LOCAL 전환 → SW ON 발행 → status=299 (SW_USER_CONTROL) override 확인 → REMOTE 복원` 로 실제 mode 집행 여부 검증.
+- **SW-Err 미지원 op → KS_STS_ERROR(1)**: SW 채널에 op=999 발행 → status=1 (ERROR) 기대. slave 가 unknown op 를 READY(0) 로 조용히 회귀하면 WARN (§B.2 위반 감지).
+
 ### 4.2 센서 계열 (§6.2)
 
 #### S-1 · 센서 상태 정보 조회 — §6.2 (p.22, 표14)
