@@ -14,6 +14,7 @@
 | **§2 Sensor prune (3-mode)** | dummy → 실 sensor 교체 시 stale metric row 가 UI 카드에 잔존 | stale / older_than / all 정리 API |
 | **§3 `devices.addr` 컬럼** | 같은 버스 안 5~10 슬레이브 구분 불가 (bus_id 만 표시) | schema migration + snapshot upsert |
 | **§4 Alias inline 편집** | Device 목록에서 alias 편집 위해 별도 화면 왕복 | 셀 더블클릭 → input → Enter/Esc, PATCH COALESCE |
+| **§5 Alarm/Auto rule metric dropdown** | 노드가 EC 만 장착돼도 metric 이 free-form text → 오타 rule 은 fire 안 함 (silent failure) | `sensorState` 실시간 캐시 + `devCodeMetric` 매핑 → 실 sensor 만 옵션 노출 |
 
 ---
 
@@ -362,6 +363,34 @@ UX 세부.
 
 ---
 
+## §5. Alarm/Auto rule metric dropdown — 실 sensor devcode 자동 필터
+
+### 5.1 문제 — free-form metric text 는 silent failure 유발
+
+Alarm rule form 이 `<input type="text" placeholder="metric">` 이면 사용자가 아무 문자열이나 입력할 수 있다.  예: 노드가 EC 만 장착돼 있는데 `temperature` 로 rule 저장 → rule 은 만들어지고 UI 상 나열되나 실 ingest sample metric 은 `ec` → op 비교 miss → rule 이 **영원히 fire 안 함**.  사용자는 "왜 알람이 안 오지?" 로 시간 소모, 로그도 조용.
+
+### 5.2 3-layer 해결
+
+**Layer 1 — `sensorState` 실시간 캐시** (신규 store, `realtime.ts`).  `actuatorState` 와 대칭.  MQTT snapshot 상 `sensors[]` 배열이 있으면 `device_id → { bus, slave, sensors: [{slot, dev, v, st}], updated_at }` 로 세팅.  매 snap (~5 s) 마다 갱신.
+
+**Layer 2 — `devCodeMetric` 매핑** (`modbus.ts`).  KS X 3267 §A.1.2 19종 sensor devcode → backend metric key (`ks_devcode_to_metric` 와 sync).  drift 방지 위해 두 파일 동시 수정 관행.
+
+**Layer 3 — Form dropdown**.  `selDev` 변경 시:
+```
+$: metricOpts = $sensorState.get(selDev.device_id)?.sensors
+    .map(s => devCodeMetric(s.dev))
+    .filter(m => m != null)
+    .map(m => ({ metric: m, label: `${devCodeLabel(...)} (${m})` }));
+```
+드롭다운 노출 (label 은 한글+key 예: "EC (ec)").  device 전환 시 `form.metric` 자동 재선택 (이전 device metric 이 새 device 옵션에 없으면 첫 항목).  snap 미도착 시 (device 등록 직후) 는 fallback text input.
+
+### 5.3 왜 backend endpoint 로 안 하고 실시간 캐시로
+
+`GET /api/devices/:id/metrics` (DB 상 `SELECT DISTINCT metric FROM sensor_data_v2 ...`) 도 옵션이나:
+- 방금 등록한 device 는 sample 이 아직 없어 empty → form 이 비어있음
+- Rule 작성 = device 처음 붙이는 순간에 자주 함 → snap 이 오히려 더 fresh
+- 이미 `actuatorState` snap-driven pattern 이 성숙 — 대칭성 확보
+
 ## 마무리
 
-이 네 축은 KS X 3267 표준 준수와 직접 관계가 없다. 그런데 검증을 마친 뒤 실 운영에 붙이는 순간부터 **없으면 UI 가 실사용 불가 상태** 가 된다 — 슬레이브 삭제 시도 → 504 → rollback → 유령 device 계속 잔존, dummy 이력이 UI 카드에 며칠씩 남아 실 데이터를 가림, 같은 버스 안 슬레이브들이 addr 없이 alias 만으로 구분 불가, alias 편집을 위해 매번 상세 화면으로 왕복. 표준 준수가 "부수지 않는 조건" 이라면, 이 네 축은 "실제로 굴러가는 조건" 이다.
+이 다섯 축은 KS X 3267 표준 준수와 직접 관계가 없다. 그런데 검증을 마친 뒤 실 운영에 붙이는 순간부터 **없으면 UI 가 실사용 불가 상태** 가 된다 — 슬레이브 삭제 시도 → 504 → rollback → 유령 device 계속 잔존, dummy 이력이 UI 카드에 며칠씩 남아 실 데이터를 가림, 같은 버스 안 슬레이브들이 addr 없이 alias 만으로 구분 불가, alias 편집을 위해 매번 상세 화면으로 왕복, alarm rule 은 오타 metric 으로 조용히 실패.  표준 준수가 "부수지 않는 조건" 이라면, 이 다섯 축은 "실제로 굴러가는 조건" 이다.
