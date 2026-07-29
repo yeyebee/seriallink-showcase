@@ -119,6 +119,19 @@ I ACTUATOR: ch1 opid=12276 op=201 → status=201 remain=0s
 
 핵심은 `ks_reg` 와 `wire_off` 를 같이 찍고, **영역 이름(`area=`)** 을 로그에 넣은 것이었다. 주소만 봐서는 그게 어느 블록의 몇 번 채널인지 매번 계산해야 한다.
 
+**2026-07 추가**: 웹 verify widget 결과에도 Modbus RTU wire-level hex (CRC-16-Modbus 포함) 를 직접 렌더한다.  Controller UART bytes 는 frontend 가 직접 못 보지만, 표준 규격이 결정론적이라 frontend 상 CRC 계산 후 재구성하면 실 wire 와 100% 일치.
+
+```
+[verify UI 상 각 결과 detail]
+CertAuthority=0x0000, CompanyCode=0x0000
+ProductType=2 (ACTUATOR)  ProductCode=0  ProtocolVersion=10
+ChannelNumber=24  SerialNumber=0x8D296DD8
+TX: 01 03 00 00 00 08 44 0C
+RX: 01 03 10 00 00 00 00 02 00 00 00 0A 00 18 00 8D 29 6D D8 CRC CRC
+```
+
+심사원이 자체 wire sniff (외부 도구 or `ksx_sniff.py`) 결과와 byte 단위 대조 가능.
+
 ---
 
 ## 3. 판정 기준 — verdict 4단계와 실패 라인 포맷
