@@ -16,6 +16,7 @@
 | **§4 Alias inline 편집** | Device 목록에서 alias 편집 위해 별도 화면 왕복 | 셀 더블클릭 → input → Enter/Esc, PATCH COALESCE |
 | **§5 Alarm/Auto rule metric dropdown** | 노드가 EC 만 장착돼도 metric 이 free-form text → 오타 rule 은 fire 안 함 (silent failure) | `sensorState` 실시간 캐시 + `devCodeMetric` 매핑 → 실 sensor 만 옵션 노출 |
 | **§6 HMI 차트 웹 트리거** | HMI 자체 "Demo" 버튼만 존재, 웹에서 real (실 sensor_data_v2 fetch) 트리거 수단 없음 | 대시보드 카드에서 demo/real 토글 + device 선택 → `smartfarm/controller/{MAC}/cmd` publish |
+| **§7 자체 xhigh bug hunt 회수** | 큰 리팩터 (§4~§6) 후 새 결함 심음 — CRITICAL kick_task collapse, LOCAL 상태 오염, form.metric 오염 등 | recall bug hunt → 7 건 fix (CRITICAL 1 + MEDIUM 4 + MINOR 2) |
 
 ---
 
@@ -421,6 +422,20 @@ Controller uplink 는 이미 `chart_demo` (dummy) 와 `chart_real` (TimescaleDB
   같은 알고리즘 (phase = metric key 문자합 × 0.13, ymin/ymax 중앙 ± 25% 진폭)
   으로 재구현.  대시보드 미리보기가 HMI 상 그리는 파형과 동일 signal.
 
+## §7. Bug hunt 회수 (자체 xhigh 리뷰 후 7 건 fix)
+
+큰 리팩터 세션 (`§4~§6`) 후 자체 xhigh recall bug hunt 를 돌려 CRITICAL 1 건 + MEDIUM 4 건 + MINOR 2 건 확정 후 fix:
+
+- **CRITICAL — `kick_task` per-slave dedup pool**: 이전 drain 30 ms 루프가 `msg` 단일 변수를 덮어써 다중 slave rapid click 시 마지막 하나만 poll + snap.  A 슬레이브 click → 그 사이 B click → A 는 폐기되고 5 s 정상 poll 까지 stale (§4.2 회색화 근절의 목표가 훼손된 상황).  16-slot pool 로 `(bus, slave)` dedup — 같은 조합은 최신으로 대체, 다른 조합은 append.
+- **MEDIUM — `xTaskCreate` 실패 handling**: chart_demo/chart_real 상 실패 시 `s_chart_demo_running=true` 잔존 + cfg heap leak 으로 이후 snapshot 도 영구 skip.  pdPASS 검사 후 free + flag 리셋.
+- **MEDIUM — Slave CONTROL invalid value 도 opid echo 오인 PASS**: 표준 미지원 nc (예: 5) 도 opid echo 만 하고 status 유지 → master N-5 verify 는 "PASS" 판정.  status = ERROR 세팅으로 F-7 (SW/OC unknown op) 정책과 통일.
+- **MEDIUM — Alarm/Auto rule form.metric device 전환 오염**: sensor snap 미도착 시 이전 device metric 이 text input pre-fill → 새 device 에 잘못된 rule.  prevSelDev 추적 후 device 전환 시 form.metric 리셋.
+- **MEDIUM — user metric dirty flag**: snap 도착이 사용자 typing 을 강제 덮어씀 방지 (기존 `a_topic_dirty` 패턴 재사용).
+- **MINOR — wire hex 3 개 verify 누락**: `vSwDirectional / vOcSetPosition / vOcSetConfig` 은 actVerdict 우회 → `withFrames` 미호출.  각 lines 상 `…withFrames([], writeRes, statusRes)` append 로 일관성.
+- **MINOR — N-5b finally REMOTE 복원**: sync throw 시 slave LOCAL 잔존 → 다음 verify 오염.  `localSet` flag + finally 블록에서 REMOTE 재발행.
+
+핵심 교훈: **큰 리팩터는 반드시 xhigh bug hunt 를 뒤에 붙인다**.  이 라운드는 6 개 fix 중 3 개 (F1, F2, F3) 가 실 운영에서 며칠 안에 드러났을 클래스.  자체 리뷰 없이 배포했다면 회색화가 다시 UI 에서 관측되기 시작하면서 §4 파이프라인 재검토로 회귀했을 것.
+
 ## 마무리
 
-이 여섯 축은 KS X 3267 표준 준수와 직접 관계가 없다. 그런데 검증을 마친 뒤 실 운영에 붙이는 순간부터 **없으면 UI 가 실사용 불가 상태** 가 된다 — 슬레이브 삭제 시도 → 504 → rollback → 유령 device 계속 잔존, dummy 이력이 UI 카드에 며칠씩 남아 실 데이터를 가림, 같은 버스 안 슬레이브들이 addr 없이 alias 만으로 구분 불가, alias 편집을 위해 매번 상세 화면으로 왕복, alarm rule 은 오타 metric 으로 조용히 실패, HMI 차트는 firmware 만 발행 수단.  표준 준수가 "부수지 않는 조건" 이라면, 이 여섯 축은 "실제로 굴러가는 조건" 이다.
+이 일곱 축은 KS X 3267 표준 준수와 직접 관계가 없다.  그런데 검증을 마친 뒤 실 운영에 붙이는 순간부터 **없으면 UI 가 실사용 불가 상태** 가 된다 — 슬레이브 삭제 시도 → 504 → rollback → 유령 device 계속 잔존, dummy 이력이 UI 카드에 며칠씩 남아 실 데이터를 가림, 같은 버스 안 슬레이브들이 addr 없이 alias 만으로 구분 불가, alias 편집을 위해 매번 상세 화면으로 왕복, alarm rule 은 오타 metric 으로 조용히 실패, HMI 차트는 firmware 만 발행 수단.  §7 은 이 여섯 축을 얹은 리팩터가 다시 새 결함을 심는 걸 잡아낸 회수 세션.  표준 준수가 "부수지 않는 조건" 이라면, 이 일곱 축은 "실제로 굴러가는 조건 + 리팩터가 갚아야 할 자체 리뷰 부채" 다.
