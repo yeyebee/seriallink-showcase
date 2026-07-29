@@ -356,6 +356,10 @@ Fix: `KSNODE_OC_DEFAULT_HOLD_SEC` Kconfig (default 3 s, range 1~60).  Simple OPE
 
 LVGL v9 default 는 모든 컨테이너 `SCROLLABLE=ON`.  카드 dense grid 상 label 폭이 card 폭 초과 시 자동 좌우 스크롤 발생.  `build_card` 상 card + val_row + btn_row 에 `LV_OBJ_FLAG_SCROLLABLE` 제거 로 방지.
 
+#### 4.4.7 SW 카드 dual-state 카드 자체 버튼화
+
+SW 카드 조작을 카드 자체 click 으로 통합 — 기존 `ON/OFF` 두 버튼 → 카드 자체가 toggle button (`last_status == SW_ON` 이면 OFF 발행, 그 외 ON 발행).  OC 카드는 반복 OPEN/CLOSE (진행 중 재발행) 시나리오 지원 위해 기존 `OPEN/CLOSE` 두 버튼 유지.  optimistic UI (pending window + 즉시 색 반전) 는 두 경로 공통.
+
 ### 4.5 Rust backend (axum)
 
 Docker container 하나로 통합된 백엔드. host network 로 동작합니다.
