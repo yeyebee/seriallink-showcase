@@ -268,6 +268,33 @@ ESP32-C3 기반 표준 센서 노드. 하나의 코드베이스에서 sdkconfig 
   (IDLE0 starve 를 피하기 위한 P4 특화 튜닝).
 - **링크**: 마스터와 UART bridge. HMI 는 값을 생성하지 않고 미러링·조작만.
 
+#### 4.4.1 rapid click 파이프라인 (씹힘/회색화 근절)
+
+사용자가 카드 12 개를 rapid 하게 누르면 두 증상이 났습니다: (1) 일부 클릭이
+슬레이브까지 안 감 (씹힘), (2) 카드가 회색으로 렌더 (soft stale). 원인 3 개,
+fix 는 파이프라인 재설계:
+
+| 층 | 원인 | fix |
+|---|---|---|
+| HMI 터치 이벤트 | LVGL dispatch 안 UART TX **blocking** → 다음 touch 대기 | UART tx buffer 를 0 → 4 KiB (async write) |
+| HMI optimistic UI | pending window 2 s < snap 주기 5 s → 만료 후 stale snap 이 UI 롤백 | pending window 2 s → 6 s |
+| Master `link_p4` | rx_task 안 `mb_master_write_multiple` + poll + snap 이 250 ms/click blocking → 12 click 3 s 점유 → RX buffer overflow line drop, snap gap 17 s+ | **2 단 offload**: rx→cmd_queue→cmd_task(write)→kick_queue→kick_task(30 ms drain dedup + poll + snap) |
+
+**최종 흐름**: `HMI UART → rx_task(parse+enqueue, µs) → cmd_queue → cmd_task
+(순차 write) → kick_queue → kick_task(dedup+poll+snap)`. rx_task 는 항상
+µs 단위 nonblocking → RX line drop 완전 소멸.
+
+**Stack overflow 사고**: 초기 kick_task stack 3 KiB 로 잡았다가
+`send_node_snapshot` (buf[768] + JSON build) 실행 시 panic → reboot loop →
+click 12 개 중 6 개만 도달 (재부팅 dead-zone 사이 drop). `addr2line
+vApplicationStackOverflowHook` 로 5 분 만에 원인 확정 → stack 6 KiB 로 확장.
+
+**partial-fail 안전 gate 3 건** (HMI): (i) `update_actuator` 상 c non-null
+확인 즉시 `last_update_ms` 선갱신 (subfield NULL 이어도 stale timer fresh),
+(ii) `stale_check` 상 partial 카드는 render skip, (iii) `build_card` 상
+subfield alloc 실패 시 이미 만든 obj destroy + memset rollback (좀비 카드
+청소).
+
 ### 4.5 Rust backend (axum)
 
 Docker container 하나로 통합된 백엔드. host network 로 동작합니다.

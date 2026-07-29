@@ -89,6 +89,27 @@ slave-c3-sensor/
 - **`SLAVE_ADDR` 은 script command-line arg 로 override** — 같은 kind 여러 slave 를 다른 addr 로
   flash 시 sdkconfig 파일 수정 불필요.
 
+## rapid click 파이프라인 (HMI 씹힘/회색화 근절)
+
+사용자 HMI 화면에서 SW 카드 12 개 rapid click (~100 ms 간격) 시나리오 실측
+fix. 상세는 [`../docs/architecture.md`](../docs/architecture.md) §4.4.1.
+
+- **Master `link_p4.c`** — 2 단 offload
+  - `rx_task`: parse + `xQueueSend(cmd_queue)` **µs 단위 nonblocking**
+  - `cmd_task` (신규): cmd_queue dequeue → `mb_master_write_multiple` 순차
+  - `kick_task` (신규): kick_queue dequeue → 30 ms drain dedup →
+    `poller_kick_one` + `send_node_snapshot`
+  - **주의**: 새 task stack 은 6 KiB 이상 필수. 3 KiB 로 잡으면
+    `send_node_snapshot` 실행 시 `vApplicationStackOverflowHook` panic →
+    reboot loop → click drop 사고.
+- **HMI `link_smartfarm.c`** — UART `tx_buf 0 → 4 KiB` (기존 blocking write 로
+  LVGL touch dispatch 지연 → 씹힘)
+- **HMI `ui_app.c`** — `pending_until_ms 2 s → 6 s` (snap 주기 5 s + 마진),
+  partial-fail 안전 gate 3 건 (last_update_ms 선갱신 / stale render skip /
+  build_card rollback)
+- **Slave `ks_actuator_node.c`** — actuator_task tick `1 s → 200 ms` +
+  ms_accum 으로 TIMED remain 초 단위 유지 (rapid cmd 감지 지연 완화)
+
 ## 빌드 / 플래시 (참고)
 
 ### ESP-IDF 환경
