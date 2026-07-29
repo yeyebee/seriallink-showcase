@@ -15,6 +15,7 @@
 | **§3 `devices.addr` 컬럼** | 같은 버스 안 5~10 슬레이브 구분 불가 (bus_id 만 표시) | schema migration + snapshot upsert |
 | **§4 Alias inline 편집** | Device 목록에서 alias 편집 위해 별도 화면 왕복 | 셀 더블클릭 → input → Enter/Esc, PATCH COALESCE |
 | **§5 Alarm/Auto rule metric dropdown** | 노드가 EC 만 장착돼도 metric 이 free-form text → 오타 rule 은 fire 안 함 (silent failure) | `sensorState` 실시간 캐시 + `devCodeMetric` 매핑 → 실 sensor 만 옵션 노출 |
+| **§6 HMI 차트 웹 트리거** | HMI 자체 "Demo" 버튼만 존재, 웹에서 real (실 sensor_data_v2 fetch) 트리거 수단 없음 | 대시보드 카드에서 demo/real 토글 + device 선택 → `smartfarm/controller/{MAC}/cmd` publish |
 
 ---
 
@@ -391,6 +392,21 @@ $: metricOpts = $sensorState.get(selDev.device_id)?.sensors
 - Rule 작성 = device 처음 붙이는 순간에 자주 함 → snap 이 오히려 더 fresh
 - 이미 `actuatorState` snap-driven pattern 이 성숙 — 대칭성 확보
 
+## §6. HMI 차트 웹 트리거 (demo / real 스위칭)
+
+Controller uplink 는 이미 `chart_demo` (720 점 dummy) 와 `chart_real`
+(TimescaleDB `sensor_data_v2` fetch) MQTT cmd 를 지원한다.  하지만 web
+대시보드에서 발행 수단이 없어 실무에서 `mosquitto_pub` 를 손으로 쳤다.
+
+대시보드 side col 에 `HmiChartCard` 를 추가해 라디오 (demo / real) +
+device select (sensor 노드만 필터) + hours/bucket 입력 + 트리거 버튼.
+`publishMqtt(topic, payload)` (기존 endpoint 재사용) 로 발행.
+
+**한계**: controller 상 `chart_real` 은 metric 4 종 (temperature / humidity
+/ co2 / soil_humidity) hardcoded.  웹에서 metric 스위칭까지 하려면 firmware
+`chart_real` payload 에 `metrics: []` 필드 추가 + `k_real_metric_names`
+runtime override 필요.  UI 상 후속 명시.
+
 ## 마무리
 
-이 다섯 축은 KS X 3267 표준 준수와 직접 관계가 없다. 그런데 검증을 마친 뒤 실 운영에 붙이는 순간부터 **없으면 UI 가 실사용 불가 상태** 가 된다 — 슬레이브 삭제 시도 → 504 → rollback → 유령 device 계속 잔존, dummy 이력이 UI 카드에 며칠씩 남아 실 데이터를 가림, 같은 버스 안 슬레이브들이 addr 없이 alias 만으로 구분 불가, alias 편집을 위해 매번 상세 화면으로 왕복, alarm rule 은 오타 metric 으로 조용히 실패.  표준 준수가 "부수지 않는 조건" 이라면, 이 다섯 축은 "실제로 굴러가는 조건" 이다.
+이 여섯 축은 KS X 3267 표준 준수와 직접 관계가 없다. 그런데 검증을 마친 뒤 실 운영에 붙이는 순간부터 **없으면 UI 가 실사용 불가 상태** 가 된다 — 슬레이브 삭제 시도 → 504 → rollback → 유령 device 계속 잔존, dummy 이력이 UI 카드에 며칠씩 남아 실 데이터를 가림, 같은 버스 안 슬레이브들이 addr 없이 alias 만으로 구분 불가, alias 편집을 위해 매번 상세 화면으로 왕복, alarm rule 은 오타 metric 으로 조용히 실패, HMI 차트는 firmware 만 발행 수단.  표준 준수가 "부수지 않는 조건" 이라면, 이 여섯 축은 "실제로 굴러가는 조건" 이다.
