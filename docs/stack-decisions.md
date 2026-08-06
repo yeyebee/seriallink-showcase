@@ -69,6 +69,9 @@ README 의 스택 요약 표는 결과만 보여준다. 이 문서는 그 결과
 
 ## ADR-003: Slave MCU = ESP32-C3
 
+> **Superseded by ADR-009** (2026-08) — 노드 하드웨어 회로 통합 결정으로 신규
+> 노드는 ESP32-S3 로 이관. 기존 배포된 C3 노드는 legacy 로 유지, 신규는 S3.
+
 **Context**
 
 슬레이브 (센서/구동기 노드) 는 마스터와 반대다. 저가·소형이 우선이고, 하나의 온실에 수십 대가 붙는다. 야전에서 재플래시할 일이 잦기 때문에 별도 flasher 없이 USB 만으로 즉시 굽는 편의가 중요하다.
@@ -236,14 +239,51 @@ README 의 스택 요약 표는 결과만 보여준다. 이 문서는 그 결과
 
 ---
 
+## ADR-009: 노드 하드웨어 통합 = 마스터 회로 재사용 (S3)
+
+*2026-08. ADR-003 (Slave MCU = C3) 을 supersede.*
+
+**Context**
+
+노드 하드웨어 (센서 캐리어 PCB) 는 그동안 마스터와 별개 회로로 취급했다. 마스터 = ESP32-S3 (ADR-002), 슬레이브 = ESP32-C3 (ADR-003). 그런데 실측 조사 상 몇 가지 사실이 확정됐다:
+
+- 마스터 PCB 상 RS485 트랜시버 · 바이어스 회로 · UART pin 배치는 슬레이브 role 로도 무결하게 동작 (raw slave test 10/10, esp-modbus slave 9/10).
+- 슬레이브 fw 의 핵심 로직 (Modbus RTU raw parser · discovery FSM · 외부 sensor UART master) 은 SoC-independent 순수 C — arduino-esp32 로도 재이식이 자연스러웠음.
+- 노드 PCB 를 마스터 회로로 재사용하면 BOM/검증/재고 부담이 절반이 되고, chip 계열 통합으로 flash 도구 · 개발 workflow 단일화 이득.
+
+**Options**
+
+- **분리 유지 (C3 슬레이브 별개 회로)** — 소형·저가 이점은 있으나, 이번 조사 상 마스터 회로가 이미 슬레이브 사양을 초과 만족. 재고 이점보다 두 계열 유지 부담이 큼.
+- **슬레이브 회로 = 마스터 회로 재사용 (S3)** — 하드웨어 트랜시버/pin 배치 이미 검증, fw port 는 sdkconfig pin/target 조정 수준. 회로 · fw · 도구 통합.
+- **완전 신설 (다른 SoC 로 재출발)** — 검증 비용 원상 복귀. 지금까지 축적된 pin 배치 · 트랜시버 회로 · fw 로직 무효.
+
+**Decision**
+
+**신 노드 chip = ESP32-S3, 마스터 PCB 회로 재사용.** 슬레이브 fw 는 별도 프로젝트 (`slave-s3-sensor`) 로 clone, sdkconfig 상 target/pin 조정. mb_slave.c · discovery.c · ec_sensor.c 등 순수 C 로직은 재컴파일만.
+
+Kind 별 sdkconfig 프로필 (`sdkconfig.defaults.{co2,ec,soil,vendor}`) 은 그대로 상속 — 배포 시 kind 하나만 선택 후 flash.
+
+**Consequences**
+
+- **PCB 회로 단일화** — 마스터/슬레이브가 동일 회로. 신 노드 PCB 는 마스터 회로도 발췌 + 슬레이브 특성 (예: sensor 커넥터, I2C 헤더) 만 추가. BOM · 조립 · 검증 workflow 단순화.
+- **Fw 로직 두 계열 → 한 계열 (SoC-agnostic 유지)** — 핵심 로직은 SoC-independent 순수 C 로 유지, kind/pin 만 sdkconfig 분기. 향후 slave-c3-sensor 폴더는 slave-s3-sensor 로 통합 rename 가능 (legacy 배포 유지 목적으로 당분간 분리).
+- **Flash · 개발 도구 통합** — S3 는 USB-Serial-JTAG 내장 (C3 와 동일 workflow 유지). flash-slave 스크립트 · idf.py workflow 그대로. `--chip esp32s3` 인자만 조정.
+- **기존 배포 C3 노드는 legacy 유지** — 신규 노드부터 S3. 마이그레이션은 자연 감가상각 방식.
+- **하드웨어 배치 실측 확인 사항** — 노드 fw 는 마스터 fw 상 P4 HMI 통신 pin (UART0 remap) 을 I2C 로 재사용 가능 (fw layer 상 pin 용도만 다름). PCB 배선은 그대로 두어도 fw 상 재구성.
+- **`slave-c3-sensor` 상 발견한 fw 계열 공통 잔재 버그** (예: Kconfig 옵션 참조는 있으나 등록 누락 되어 있어 sdkconfig 상 명시해도 silent no-op 하던 것) 는 이 통합 계기로 slave-base Kconfig 에 정리 반영.
+
+---
+
 ## ADR 간 상호 참조 요약
 
 - **ADR-001 (KS X 3267)** → 마스터 확장 (KS X 3286 vendor 노드) 이 ADR-002 의 마스터 여유 사양에서 실현.
 - **ADR-002 (S3 마스터)** ↔ **ADR-004 (P4 HMI)** — UART 링크 요구가 S3 UART 수 여유를 근거로 성립.
-- **ADR-003 (C3 슬레이브)** — 야전 flash 편의를 위해 USB-Serial-JTAG 채택, 그 결과 monitor 스크립트의 DTR/RTS · 재연결 관례가 필수.
+- **ADR-002 (S3 마스터)** → **ADR-009 (노드 통합)** — 마스터 회로 무결성 실측이 노드 재사용의 근거.
+- **ADR-003 (C3 슬레이브)** *(Superseded by ADR-009)* — 야전 flash 편의를 위해 USB-Serial-JTAG 채택, 그 관례는 S3 로 이관 후에도 그대로 유지 (S3 도 USB-Serial-JTAG 내장).
 - **ADR-005 (Rust)** ← **ADR-006 (TimescaleDB)** — Compressed chunk DELETE 지연이 async job 패턴을 요구, tokio task 로 자연스럽게 흡수.
 - **ADR-007 (SvelteKit static)** → **ADR-008 (Docker + nginx)** — 정적 산출물을 nginx 로 서빙, backend 만 컨테이너화하는 배포 모델의 절반을 담당.
 - **ADR-008 (부분 Docker)** — 기존 bare metal 자산 (Postgres/mosquitto) 을 그대로 두고 backend 만 옮긴 pragmatic 선택. 오케스트레이션 대신 스크립트 + git 이력으로 관리.
+- **ADR-009 (노드 통합)** — 마스터 PCB 검증이 노드 회로 결정의 근거로 pull-through. Chip 통합으로 fw workflow · flash 도구 · 재고가 단일화.
 
 ---
 
